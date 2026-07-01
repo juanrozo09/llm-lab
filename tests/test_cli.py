@@ -1,0 +1,92 @@
+# tests/test_cli.py
+from typer.testing import CliRunner
+
+from llm_lab.cli import PROVIDERS, app
+from llm_lab.errors import ProviderUnavailableError
+from llm_lab.models import ChatResponse
+
+runner = CliRunner()
+
+
+class FakeProvider:
+    def __init__(self, name: str, model: str, response=None, error=None):
+        self.name = name
+        self.model = model
+        self._response = response
+        self._error = error
+
+    async def chat(self, prompt: str, system: str | None = None) -> ChatResponse:
+        if self._error is not None:
+            raise self._error
+        return self._response
+
+
+def test_chat_command_prints_response_and_cost_table(monkeypatch):
+    response = ChatResponse(
+        text="hi there",
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        input_tokens=10,
+        output_tokens=20,
+        latency_ms=100.0,
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "anthropic",
+        lambda: FakeProvider("anthropic", "claude-sonnet-4-6", response=response),
+    )
+
+    result = runner.invoke(app, ["chat", "hello", "--provider", "anthropic"])
+
+    assert result.exit_code == 0
+    assert "hi there" in result.output
+    assert "claude-sonnet-4-6" in result.output
+
+
+def test_chat_command_fallback_switches_provider(monkeypatch):
+    fallback_response = ChatResponse(
+        text="from openai",
+        provider="openai",
+        model="gpt-4o-mini",
+        input_tokens=5,
+        output_tokens=5,
+        latency_ms=50.0,
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "anthropic",
+        lambda: FakeProvider(
+            "anthropic",
+            "claude-sonnet-4-6",
+            error=ProviderUnavailableError("anthropic", RuntimeError("down")),
+        ),
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "openai",
+        lambda: FakeProvider("openai", "gpt-4o-mini", response=fallback_response),
+    )
+
+    result = runner.invoke(
+        app, ["chat", "hello", "--provider", "anthropic", "--fallback"]
+    )
+
+    assert result.exit_code == 0
+    assert "from openai" in result.output
+    assert "fallback" in result.output.lower()
+
+
+def test_chat_command_fails_without_fallback(monkeypatch):
+    monkeypatch.setitem(
+        PROVIDERS,
+        "anthropic",
+        lambda: FakeProvider(
+            "anthropic",
+            "claude-sonnet-4-6",
+            error=ProviderUnavailableError("anthropic", RuntimeError("down")),
+        ),
+    )
+
+    result = runner.invoke(app, ["chat", "hello", "--provider", "anthropic"])
+
+    assert result.exit_code == 1
