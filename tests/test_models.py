@@ -54,3 +54,15 @@ def test_cost_scales_with_partial_tokens():
         latency_ms=1.0,
     )
     assert cost(response) == pytest.approx(0.075)
+
+
+from llm_lab.errors import ProviderUnavailableError
+
+
+def test_provider_unavailable_error_holds_provider_and_cause():
+    original = RuntimeError("boom")
+    error = ProviderUnavailableError("anthropic", original)
+
+    assert error.provider == "anthropic"
+    assert error.original_error is original
+    assert "anthropic" in str(error)
