@@ -4,9 +4,11 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 from anthropic import APIConnectionError
+from openai import APIConnectionError as OpenAIAPIConnectionError
 
 from llm_lab.errors import ProviderUnavailableError
 from llm_lab.providers.anthropic import AnthropicProvider
+from llm_lab.providers.openai import OpenAIProvider
 
 
 def make_anthropic_message(text="hello", input_tokens=5, output_tokens=7):
@@ -68,11 +70,6 @@ def test_anthropic_provider_requires_api_key(monkeypatch):
 
     with pytest.raises(RuntimeError):
         AnthropicProvider()
-
-
-from openai import APIConnectionError as OpenAIAPIConnectionError
-
-from llm_lab.providers.openai import OpenAIProvider
 
 
 def make_openai_completion(text="hello", prompt_tokens=5, completion_tokens=7):

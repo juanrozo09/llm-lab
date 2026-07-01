@@ -160,6 +160,98 @@ def test_compare_command_shows_error_for_failing_provider(monkeypatch):
     assert "Error" in result.output
 
 
+def test_chat_command_fails_cleanly_when_both_providers_unavailable(monkeypatch):
+    monkeypatch.setitem(
+        PROVIDERS,
+        "anthropic",
+        lambda: FakeProvider(
+            "anthropic",
+            "claude-sonnet-4-6",
+            error=ProviderUnavailableError("anthropic", RuntimeError("down")),
+        ),
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "openai",
+        lambda: FakeProvider(
+            "openai",
+            "gpt-4o-mini",
+            error=ProviderUnavailableError("openai", RuntimeError("also down")),
+        ),
+    )
+
+    result = runner.invoke(
+        app, ["chat", "hello", "--provider", "anthropic", "--fallback"]
+    )
+
+    assert result.exit_code == 1
+    assert "Error" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_chat_command_fails_cleanly_when_provider_missing_api_key(monkeypatch):
+    def raise_missing_key():
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+    monkeypatch.setitem(PROVIDERS, "anthropic", raise_missing_key)
+
+    result = runner.invoke(app, ["chat", "hello", "--provider", "anthropic"])
+
+    assert result.exit_code == 1
+    assert "Error" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_compare_command_shows_error_row_when_provider_missing_api_key(monkeypatch):
+    openai_response = ChatResponse(
+        text="openai says hi",
+        provider="openai",
+        model="gpt-4o-mini",
+        input_tokens=8,
+        output_tokens=8,
+        latency_ms=40.0,
+    )
+
+    def raise_missing_key():
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+    monkeypatch.setitem(PROVIDERS, "anthropic", raise_missing_key)
+    monkeypatch.setitem(
+        PROVIDERS,
+        "openai",
+        lambda: FakeProvider("openai", "gpt-4o-mini", response=openai_response),
+    )
+
+    result = runner.invoke(app, ["compare", "hello"])
+
+    assert result.exit_code == 0
+    assert "openai says hi" in result.output
+    assert "Error" in result.output
+
+
+def test_benchmark_command_rejects_n_less_than_one():
+    result = runner.invoke(
+        app, ["benchmark", "hello", "--provider", "anthropic", "--n", "0"]
+    )
+
+    assert result.exit_code == 1
+    assert "Error" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_benchmark_command_fails_cleanly_when_provider_missing_api_key(monkeypatch):
+    def raise_missing_key():
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+    monkeypatch.setitem(PROVIDERS, "anthropic", raise_missing_key)
+
+    result = runner.invoke(app, ["benchmark", "hello", "--provider", "anthropic"])
+
+    assert result.exit_code == 1
+    assert "Error" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
 def test_benchmark_command_runs_n_times_and_shows_summary(monkeypatch):
     call_count = 0
 

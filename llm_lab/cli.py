@@ -3,6 +3,7 @@ import asyncio
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -18,6 +19,12 @@ PROVIDERS = {
     "anthropic": AnthropicProvider,
     "openai": OpenAIProvider,
 }
+
+# Provider construction raises a plain RuntimeError when an API key is
+# missing; chat()/gather() calls raise ProviderUnavailableError after
+# retries are exhausted. Both should surface as a clean CLI error rather
+# than a raw traceback.
+PROVIDER_ERRORS = (RuntimeError, ProviderUnavailableError)
 
 
 @app.callback()
@@ -58,10 +65,10 @@ def chat(
         raise typer.Exit(code=1)
 
     async def run() -> tuple[ChatResponse, bool]:
-        instance = PROVIDERS[provider]()
         try:
+            instance = PROVIDERS[provider]()
             return await instance.chat(prompt, system), False
-        except ProviderUnavailableError:
+        except PROVIDER_ERRORS:
             if not fallback:
                 raise
             other_name = "openai" if provider == "anthropic" else "anthropic"
@@ -70,14 +77,14 @@ def chat(
 
     try:
         response, used_fallback = asyncio.run(run())
-    except ProviderUnavailableError as exc:
+    except PROVIDER_ERRORS as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=1)
 
     title = f"{response.provider} ({response.model})"
     if used_fallback:
         title += " — fallback used"
-    console.print(Panel(response.text, title=title))
+    console.print(Panel(escape(response.text), title=title))
     console.print(_render_cost_table(response))
 
 
@@ -88,10 +95,12 @@ def compare(
 ) -> None:
     names = list(PROVIDERS.keys())
 
+    async def call(name: str) -> ChatResponse:
+        return await PROVIDERS[name]().chat(prompt, system)
+
     async def run() -> list[ChatResponse | BaseException]:
-        instances = [PROVIDERS[name]() for name in names]
         return await asyncio.gather(
-            *(instance.chat(prompt, system) for instance in instances),
+            *(call(name) for name in names),
             return_exceptions=True,
         )
 
@@ -106,11 +115,12 @@ def compare(
     table.add_column("Cost ($)")
     for name, result in zip(names, results):
         if isinstance(result, BaseException):
-            table.add_row(name, f"[red]Error: {result}[/red]", "-", "-", "-", "-")
+            error_text = f"[red]Error: {escape(str(result))}[/red]"
+            table.add_row(name, error_text, "-", "-", "-", "-")
         else:
             table.add_row(
                 name,
-                result.text,
+                escape(result.text),
                 f"{result.latency_ms:.1f}",
                 str(result.input_tokens),
                 str(result.output_tokens),
@@ -130,6 +140,9 @@ def benchmark(
     if provider not in PROVIDERS:
         console.print(f"[red]Error:[/red] unknown provider '{provider}'")
         raise typer.Exit(code=1)
+    if n < 1:
+        console.print(f"[red]Error:[/red] --n must be at least 1, got {n}")
+        raise typer.Exit(code=1)
 
     async def run() -> list[ChatResponse]:
         instance = PROVIDERS[provider]()
@@ -138,7 +151,11 @@ def benchmark(
             responses.append(await instance.chat(prompt))
         return responses
 
-    responses = asyncio.run(run())
+    try:
+        responses = asyncio.run(run())
+    except PROVIDER_ERRORS as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1)
 
     table = Table(title=f"Benchmark: {provider} ({n} runs)")
     table.add_column("Run")

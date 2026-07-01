@@ -1,5 +1,6 @@
 import pytest
 
+from llm_lab.errors import ProviderUnavailableError
 from llm_lab.models import ChatResponse, cost
 
 
@@ -54,9 +55,6 @@ def test_cost_scales_with_partial_tokens():
         latency_ms=1.0,
     )
     assert cost(response) == pytest.approx(0.075)
-
-
-from llm_lab.errors import ProviderUnavailableError
 
 
 def test_provider_unavailable_error_holds_provider_and_cause():
