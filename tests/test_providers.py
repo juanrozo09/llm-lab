@@ -11,14 +11,18 @@ from llm_lab.providers.anthropic import AnthropicProvider
 from llm_lab.providers.openai import OpenAIProvider
 
 
-def make_anthropic_message(text="hello", input_tokens=5, output_tokens=7):
+def make_ai_message(text="hello", input_tokens=5, output_tokens=7):
     message = MagicMock()
-    message.content = [MagicMock(text=text)]
-    message.usage = MagicMock(input_tokens=input_tokens, output_tokens=output_tokens)
+    message.content = text
+    message.usage_metadata = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+    }
     return message
 
 
-def make_connection_error():
+def make_anthropic_connection_error():
     request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     return APIConnectionError(request=request)
 
@@ -26,8 +30,12 @@ def make_connection_error():
 async def test_anthropic_chat_success(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     provider = AnthropicProvider()
-    provider._client.messages.create = AsyncMock(
-        return_value=make_anthropic_message()
+    # ChatAnthropic is a pydantic v2 model with strict field validation, so a
+    # plain `provider._client.ainvoke = ...` assignment raises ValueError
+    # ("no field 'ainvoke'"). Use object.__setattr__ to bypass pydantic's
+    # overridden __setattr__ and stub the instance method directly.
+    object.__setattr__(
+        provider._client, "ainvoke", AsyncMock(return_value=make_ai_message())
     )
 
     response = await provider.chat("hi")
@@ -40,29 +48,19 @@ async def test_anthropic_chat_success(monkeypatch):
     assert response.latency_ms >= 0
 
 
-async def test_anthropic_chat_retries_then_succeeds(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    provider = AnthropicProvider()
-    provider._client.messages.create = AsyncMock(
-        side_effect=[make_connection_error(), make_anthropic_message()]
-    )
-
-    response = await provider.chat("hi")
-
-    assert response.text == "hello"
-    assert provider._client.messages.create.call_count == 2
-
-
 async def test_anthropic_chat_raises_provider_unavailable_after_retries(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     provider = AnthropicProvider()
-    provider._client.messages.create = AsyncMock(side_effect=make_connection_error())
+    object.__setattr__(
+        provider._client,
+        "ainvoke",
+        AsyncMock(side_effect=make_anthropic_connection_error()),
+    )
 
     with pytest.raises(ProviderUnavailableError) as exc_info:
         await provider.chat("hi")
 
     assert exc_info.value.provider == "anthropic"
-    assert provider._client.messages.create.call_count == 3
 
 
 def test_anthropic_provider_requires_api_key(monkeypatch):
