@@ -158,3 +158,34 @@ def test_compare_command_shows_error_for_failing_provider(monkeypatch):
     assert result.exit_code == 0
     assert "openai says hi" in result.output
     assert "Error" in result.output
+
+
+def test_benchmark_command_runs_n_times_and_shows_summary(monkeypatch):
+    call_count = 0
+
+    class CountingFakeProvider(FakeProvider):
+        async def chat(self, prompt: str, system: str | None = None) -> ChatResponse:
+            nonlocal call_count
+            call_count += 1
+            return ChatResponse(
+                text=f"run {call_count}",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=10,
+                output_tokens=10,
+                latency_ms=float(call_count * 10),
+            )
+
+    monkeypatch.setitem(
+        PROVIDERS,
+        "anthropic",
+        lambda: CountingFakeProvider("anthropic", "claude-sonnet-4-6"),
+    )
+
+    result = runner.invoke(
+        app, ["benchmark", "hello", "--provider", "anthropic", "--n", "3"]
+    )
+
+    assert result.exit_code == 0
+    assert call_count == 3
+    assert "Mean" in result.output

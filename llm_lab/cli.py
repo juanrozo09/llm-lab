@@ -119,6 +119,48 @@ def compare(
     console.print(table)
 
 
+@app.command()
+def benchmark(
+    prompt: str = typer.Argument(..., help="Prompt to run repeatedly"),
+    provider: str = typer.Option(
+        "anthropic", help="Provider to use: anthropic or openai"
+    ),
+    n: int = typer.Option(5, "--n", help="Number of sequential runs"),
+) -> None:
+    if provider not in PROVIDERS:
+        console.print(f"[red]Error:[/red] unknown provider '{provider}'")
+        raise typer.Exit(code=1)
+
+    async def run() -> list[ChatResponse]:
+        instance = PROVIDERS[provider]()
+        responses = []
+        for _ in range(n):
+            responses.append(await instance.chat(prompt))
+        return responses
+
+    responses = asyncio.run(run())
+
+    table = Table(title=f"Benchmark: {provider} ({n} runs)")
+    table.add_column("Run")
+    table.add_column("Latency (ms)")
+    table.add_column("Input tokens")
+    table.add_column("Output tokens")
+    table.add_column("Cost ($)")
+    for i, response in enumerate(responses, start=1):
+        table.add_row(
+            str(i),
+            f"{response.latency_ms:.1f}",
+            str(response.input_tokens),
+            str(response.output_tokens),
+            f"{cost(response):.6f}",
+        )
+
+    mean_latency = sum(r.latency_ms for r in responses) / len(responses)
+    total_cost = sum(cost(r) for r in responses)
+    table.add_row("Mean / Total", f"{mean_latency:.1f}", "-", "-", f"{total_cost:.6f}")
+    console.print(table)
+
+
 def main() -> None:
     app()
 
