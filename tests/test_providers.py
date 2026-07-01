@@ -68,3 +68,72 @@ def test_anthropic_provider_requires_api_key(monkeypatch):
 
     with pytest.raises(RuntimeError):
         AnthropicProvider()
+
+
+from openai import APIConnectionError as OpenAIAPIConnectionError
+
+from llm_lab.providers.openai import OpenAIProvider
+
+
+def make_openai_completion(text="hello", prompt_tokens=5, completion_tokens=7):
+    completion = MagicMock()
+    completion.choices = [MagicMock(message=MagicMock(content=text))]
+    completion.usage = MagicMock(
+        prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+    )
+    return completion
+
+
+def make_openai_connection_error():
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    return OpenAIAPIConnectionError(request=request)
+
+
+async def test_openai_chat_success(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider = OpenAIProvider()
+    provider._client.chat.completions.create = AsyncMock(
+        return_value=make_openai_completion()
+    )
+
+    response = await provider.chat("hi")
+
+    assert response.text == "hello"
+    assert response.provider == "openai"
+    assert response.model == "gpt-4o-mini"
+    assert response.input_tokens == 5
+    assert response.output_tokens == 7
+
+
+async def test_openai_chat_retries_then_succeeds(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider = OpenAIProvider()
+    provider._client.chat.completions.create = AsyncMock(
+        side_effect=[make_openai_connection_error(), make_openai_completion()]
+    )
+
+    response = await provider.chat("hi")
+
+    assert response.text == "hello"
+    assert provider._client.chat.completions.create.call_count == 2
+
+
+async def test_openai_chat_raises_provider_unavailable_after_retries(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider = OpenAIProvider()
+    provider._client.chat.completions.create = AsyncMock(
+        side_effect=make_openai_connection_error()
+    )
+
+    with pytest.raises(ProviderUnavailableError) as exc_info:
+        await provider.chat("hi")
+
+    assert exc_info.value.provider == "openai"
+    assert provider._client.chat.completions.create.call_count == 3
+
+
+def test_openai_provider_requires_api_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError):
+        OpenAIProvider()
