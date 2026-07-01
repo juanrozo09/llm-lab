@@ -81,6 +81,44 @@ def chat(
     console.print(_render_cost_table(response))
 
 
+@app.command()
+def compare(
+    prompt: str = typer.Argument(..., help="Prompt to send to both providers"),
+    system: str | None = typer.Option(None, help="Optional system prompt"),
+) -> None:
+    names = list(PROVIDERS.keys())
+
+    async def run() -> list[ChatResponse | BaseException]:
+        instances = [PROVIDERS[name]() for name in names]
+        return await asyncio.gather(
+            *(instance.chat(prompt, system) for instance in instances),
+            return_exceptions=True,
+        )
+
+    results = asyncio.run(run())
+
+    table = Table(title="Provider Comparison")
+    table.add_column("Provider")
+    table.add_column("Text", no_wrap=True)
+    table.add_column("Latency (ms)")
+    table.add_column("Input tokens")
+    table.add_column("Output tokens")
+    table.add_column("Cost ($)")
+    for name, result in zip(names, results):
+        if isinstance(result, BaseException):
+            table.add_row(name, f"[red]Error: {result}[/red]", "-", "-", "-", "-")
+        else:
+            table.add_row(
+                name,
+                result.text,
+                f"{result.latency_ms:.1f}",
+                str(result.input_tokens),
+                str(result.output_tokens),
+                f"{cost(result):.6f}",
+            )
+    console.print(table)
+
+
 def main() -> None:
     app()
 

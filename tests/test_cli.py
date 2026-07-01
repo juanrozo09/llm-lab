@@ -90,3 +90,71 @@ def test_chat_command_fails_without_fallback(monkeypatch):
     result = runner.invoke(app, ["chat", "hello", "--provider", "anthropic"])
 
     assert result.exit_code == 1
+
+
+def test_compare_command_shows_both_providers(monkeypatch):
+    anthropic_response = ChatResponse(
+        text="anthropic says hi",
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        input_tokens=10,
+        output_tokens=10,
+        latency_ms=80.0,
+    )
+    openai_response = ChatResponse(
+        text="openai says hi",
+        provider="openai",
+        model="gpt-4o-mini",
+        input_tokens=8,
+        output_tokens=8,
+        latency_ms=40.0,
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "anthropic",
+        lambda: FakeProvider(
+            "anthropic", "claude-sonnet-4-6", response=anthropic_response
+        ),
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "openai",
+        lambda: FakeProvider("openai", "gpt-4o-mini", response=openai_response),
+    )
+
+    result = runner.invoke(app, ["compare", "hello"])
+
+    assert result.exit_code == 0
+    assert "anthropic says hi" in result.output
+    assert "openai says hi" in result.output
+
+
+def test_compare_command_shows_error_for_failing_provider(monkeypatch):
+    openai_response = ChatResponse(
+        text="openai says hi",
+        provider="openai",
+        model="gpt-4o-mini",
+        input_tokens=8,
+        output_tokens=8,
+        latency_ms=40.0,
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "anthropic",
+        lambda: FakeProvider(
+            "anthropic",
+            "claude-sonnet-4-6",
+            error=ProviderUnavailableError("anthropic", RuntimeError("down")),
+        ),
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "openai",
+        lambda: FakeProvider("openai", "gpt-4o-mini", response=openai_response),
+    )
+
+    result = runner.invoke(app, ["compare", "hello"])
+
+    assert result.exit_code == 0
+    assert "openai says hi" in result.output
+    assert "Error" in result.output
