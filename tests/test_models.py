@@ -1,7 +1,7 @@
 import pytest
 
 from llm_lab.errors import ProviderUnavailableError
-from llm_lab.models import ChatResponse, cost
+from llm_lab.models import ChatResponse, cost, resolve_model
 
 
 def test_chat_response_holds_all_fields():
@@ -64,3 +64,22 @@ def test_provider_unavailable_error_holds_provider_and_cause():
     assert error.provider == "anthropic"
     assert error.original_error is original
     assert "anthropic" in str(error)
+
+
+def test_resolve_model_returns_default_when_none():
+    assert resolve_model("anthropic", None) == "claude-sonnet-4-6"
+    assert resolve_model("openai", None) == "gpt-4o-mini"
+
+
+def test_resolve_model_returns_valid_override():
+    assert resolve_model("anthropic", "claude-opus-4-6") == "claude-opus-4-6"
+
+
+def test_resolve_model_rejects_unknown_model():
+    with pytest.raises(ValueError, match="Unknown model"):
+        resolve_model("anthropic", "not-a-real-model")
+
+
+def test_resolve_model_rejects_provider_mismatch():
+    with pytest.raises(ValueError, match="belongs to provider 'openai'"):
+        resolve_model("anthropic", "gpt-4o-mini")
