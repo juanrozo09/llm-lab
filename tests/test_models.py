@@ -83,3 +83,33 @@ def test_resolve_model_rejects_unknown_model():
 def test_resolve_model_rejects_provider_mismatch():
     with pytest.raises(ValueError, match="belongs to provider 'openai'"):
         resolve_model("anthropic", "gpt-4o-mini")
+
+
+def test_resolve_model_returns_default_for_new_providers():
+    assert resolve_model("groq", None) == "llama-3.3-70b-versatile"
+    assert resolve_model("gemini", None) == "gemini-2.5-flash"
+    assert resolve_model("ollama", None) == "llama3.2"
+
+
+def test_cost_for_groq_model():
+    response = ChatResponse(
+        text="hi",
+        provider="groq",
+        model="llama-3.3-70b-versatile",
+        input_tokens=1_000_000,
+        output_tokens=1_000_000,
+        latency_ms=1.0,
+    )
+    assert cost(response) == pytest.approx(0.59 + 0.79)
+
+
+def test_cost_for_ollama_model_is_zero():
+    response = ChatResponse(
+        text="hi",
+        provider="ollama",
+        model="llama3.2",
+        input_tokens=1_000_000,
+        output_tokens=1_000_000,
+        latency_ms=1.0,
+    )
+    assert cost(response) == 0.0

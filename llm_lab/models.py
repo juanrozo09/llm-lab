@@ -37,12 +37,24 @@ PRICING: dict[str, dict[str, str | float]] = {
     "o3-mini": {"provider": "openai", "input": 1.10, "output": 4.40},
     "o1": {"provider": "openai", "input": 15.00, "output": 60.00},
     "o1-mini": {"provider": "openai", "input": 1.10, "output": 4.40},
+
+    # Groq
+    "llama-3.3-70b-versatile": {"provider": "groq", "input": 0.59, "output": 0.79},
+
+    # Google Gemini
+    "gemini-2.5-flash": {"provider": "gemini", "input": 0.30, "output": 2.50},
+
+    # Ollama (local, no billing)
+    "llama3.2": {"provider": "ollama", "input": 0.0, "output": 0.0},
 }
 
 
 DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-sonnet-4-6",
     "openai": "gpt-4o-mini",
+    "groq": "llama-3.3-70b-versatile",
+    "gemini": "gemini-2.5-flash",
+    "ollama": "llama3.2",
 }
 
 
