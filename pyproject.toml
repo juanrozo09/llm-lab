@@ -1,0 +1,41 @@
+[project]
+name = "llm-lab"
+version = "0.1.0"
+description = "CLI to chat, compare, and benchmark Anthropic, OpenAI, Groq, Gemini, and Ollama models"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.15",
+    "rich>=13.9",
+    "pydantic>=2.9",
+    "anthropic>=0.40",
+    "openai>=1.60",
+    "langchain>=1.0,<2",
+    "langchain-anthropic>=0.3",
+    "langchain-openai>=0.3",
+    "langchain-groq>=0.2",
+    "langchain-google-genai>=2.0",
+    "langchain-ollama>=0.2",
+]
+
+[project.scripts]
+llm-lab = "llm_lab.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:'_UnionGenericAlias' is deprecated:DeprecationWarning:google.genai.types",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["llm_lab"]
