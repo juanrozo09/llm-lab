@@ -4,6 +4,11 @@ import time
 
 from anthropic import APIConnectionError as AnthropicAPIConnectionError
 from anthropic import RateLimitError as AnthropicRateLimitError
+from google.genai.errors import ClientError as GeminiClientError
+from google.genai.errors import ServerError as GeminiServerError
+from groq import APIConnectionError as GroqAPIConnectionError
+from groq import RateLimitError as GroqRateLimitError
+from httpx import ConnectError as OllamaConnectError
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from openai import APIConnectionError as OpenAIAPIConnectionError
@@ -13,9 +18,20 @@ from llm_lab.errors import ProviderUnavailableError
 from llm_lab.models import ChatResponse
 from llm_lab.providers.base import Provider
 
-API_KEY_ENV_VARS: dict[str, str] = {
+API_KEY_ENV_VARS: dict[str, str | None] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "gemini": "GOOGLE_API_KEY",
+    "ollama": None,
+}
+
+MODEL_PROVIDER_IDS: dict[str, str] = {
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "groq": "groq",
+    "gemini": "google_genai",
+    "ollama": "ollama",
 }
 
 RETRYABLE_ERRORS = (
@@ -23,24 +39,30 @@ RETRYABLE_ERRORS = (
     AnthropicAPIConnectionError,
     OpenAIRateLimitError,
     OpenAIAPIConnectionError,
+    GroqRateLimitError,
+    GroqAPIConnectionError,
+    GeminiClientError,
+    GeminiServerError,
+    OllamaConnectError,
 )
 
 
 class LangChainProvider(Provider):
     def __init__(self, name: str, model: str) -> None:
         env_var = API_KEY_ENV_VARS[name]
-        api_key = os.environ.get(env_var)
-        if not api_key:
-            raise RuntimeError(f"{env_var} is not set")
+        kwargs: dict = {
+            "model_provider": MODEL_PROVIDER_IDS[name],
+            "max_tokens": 1024,
+            "max_retries": 3,
+        }
+        if env_var is not None:
+            api_key = os.environ.get(env_var)
+            if not api_key:
+                raise RuntimeError(f"{env_var} is not set")
+            kwargs["api_key"] = api_key
         self.name = name
         self.model = model
-        self._client = init_chat_model(
-            model,
-            model_provider=name,
-            max_tokens=1024,
-            max_retries=3,
-            api_key=api_key,
-        )
+        self._client = init_chat_model(model, **kwargs)
 
     async def _create(self, prompt: str, system: str | None):
         messages = []
