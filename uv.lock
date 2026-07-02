@@ -521,7 +521,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
-    { name = "langchain", specifier = ">=0.3" },
+    { name = "langchain", specifier = ">=1.0,<2" },
     { name = "langchain-anthropic", specifier = ">=0.3" },
     { name = "langchain-openai", specifier = ">=0.3" },
     { name = "openai", specifier = ">=1.60" },
