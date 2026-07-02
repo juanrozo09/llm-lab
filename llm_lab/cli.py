@@ -160,12 +160,12 @@ def compare(
     results = asyncio.run(run())
 
     table = Table(title="Provider Comparison")
-    table.add_column("Provider")
-    table.add_column("Text", no_wrap=True)
-    table.add_column("Latency (ms)")
-    table.add_column("Input tokens")
-    table.add_column("Output tokens")
-    table.add_column("Cost ($)")
+    table.add_column("Provider", no_wrap=True)
+    table.add_column("Text", overflow="fold", ratio=1)
+    table.add_column("Latency (ms)", no_wrap=True)
+    table.add_column("Input tokens", no_wrap=True)
+    table.add_column("Output tokens", no_wrap=True)
+    table.add_column("Cost ($)", no_wrap=True)
     for name, result in zip(names, results):
         if isinstance(result, BaseException):
             error_text = f"[red]Error: {escape(str(result))}[/red]"
