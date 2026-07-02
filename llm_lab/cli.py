@@ -19,6 +19,9 @@ console = Console()
 PROVIDERS: dict[str, Callable[[str], Provider]] = {
     "anthropic": lambda model: LangChainProvider("anthropic", model),
     "openai": lambda model: LangChainProvider("openai", model),
+    "groq": lambda model: LangChainProvider("groq", model),
+    "gemini": lambda model: LangChainProvider("gemini", model),
+    "ollama": lambda model: LangChainProvider("ollama", model),
 }
 
 # Provider construction raises a plain RuntimeError when an API key is
@@ -54,7 +57,8 @@ def _render_cost_table(response: ChatResponse) -> Table:
 def chat(
     prompt: str = typer.Argument(..., help="Prompt to send"),
     provider: str = typer.Option(
-        "anthropic", help="Provider to use: anthropic or openai"
+        "anthropic",
+        help="Provider to use: anthropic, openai, groq, gemini, or ollama",
     ),
     model: str | None = typer.Option(
         None, "--model", help="Override the model for the selected provider"
@@ -100,17 +104,42 @@ def chat(
 
 @app.command()
 def compare(
-    prompt: str = typer.Argument(..., help="Prompt to send to both providers"),
+    prompt: str = typer.Argument(..., help="Prompt to send to the selected providers"),
     system: str | None = typer.Option(None, help="Optional system prompt"),
+    providers: str = typer.Option(
+        "anthropic,openai",
+        "--providers",
+        help="Comma-separated list of providers to compare",
+    ),
     anthropic_model: str | None = typer.Option(
         None, "--anthropic-model", help="Override Anthropic's model"
     ),
     openai_model: str | None = typer.Option(
         None, "--openai-model", help="Override OpenAI's model"
     ),
+    groq_model: str | None = typer.Option(
+        None, "--groq-model", help="Override Groq's model"
+    ),
+    gemini_model: str | None = typer.Option(
+        None, "--gemini-model", help="Override Gemini's model"
+    ),
+    ollama_model: str | None = typer.Option(
+        None, "--ollama-model", help="Override Ollama's model"
+    ),
 ) -> None:
-    names = list(PROVIDERS.keys())
-    overrides = {"anthropic": anthropic_model, "openai": openai_model}
+    names = [name.strip() for name in providers.split(",")]
+    for name in names:
+        if name not in PROVIDERS:
+            console.print(f"[red]Error:[/red] unknown provider '{name}'")
+            raise typer.Exit(code=1)
+
+    overrides = {
+        "anthropic": anthropic_model,
+        "openai": openai_model,
+        "groq": groq_model,
+        "gemini": gemini_model,
+        "ollama": ollama_model,
+    }
     models: dict[str, str] = {}
     for name in names:
         try:
@@ -157,7 +186,8 @@ def compare(
 def benchmark(
     prompt: str = typer.Argument(..., help="Prompt to run repeatedly"),
     provider: str = typer.Option(
-        "anthropic", help="Provider to use: anthropic or openai"
+        "anthropic",
+        help="Provider to use: anthropic, openai, groq, gemini, or ollama",
     ),
     model: str | None = typer.Option(
         None, "--model", help="Override the model for the selected provider"

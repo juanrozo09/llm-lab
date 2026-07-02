@@ -480,3 +480,119 @@ def test_benchmark_command_rejects_unknown_model():
 
     assert result.exit_code == 1
     assert "Error" in result.output
+
+
+def test_compare_command_providers_flag_selects_subset(monkeypatch):
+    groq_response = ChatResponse(
+        text="groq says hi",
+        provider="groq",
+        model="llama-3.3-70b-versatile",
+        input_tokens=6,
+        output_tokens=6,
+        latency_ms=30.0,
+    )
+    gemini_response = ChatResponse(
+        text="gemini says hi",
+        provider="gemini",
+        model="gemini-2.5-flash",
+        input_tokens=7,
+        output_tokens=7,
+        latency_ms=35.0,
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "groq",
+        lambda model: FakeProvider("groq", model, response=groq_response),
+    )
+    monkeypatch.setitem(
+        PROVIDERS,
+        "gemini",
+        lambda model: FakeProvider("gemini", model, response=gemini_response),
+    )
+
+    result = runner.invoke(app, ["compare", "hello", "--providers", "groq,gemini"])
+
+    assert result.exit_code == 0
+    assert "groq says hi" in result.output
+    assert "gemini says hi" in result.output
+    assert "anthropic" not in result.output.lower()
+
+
+def test_compare_command_rejects_unknown_provider_in_providers_flag():
+    result = runner.invoke(
+        app, ["compare", "hello", "--providers", "anthropic,not-a-real-provider"]
+    )
+
+    assert result.exit_code == 1
+    assert "Error" in result.output
+
+
+def test_compare_command_new_provider_model_overrides_reach_provider(monkeypatch):
+    captured_models = {}
+
+    def make_factory(name):
+        def factory(model):
+            captured_models[name] = model
+            return FakeProvider(
+                name,
+                model,
+                response=ChatResponse(
+                    text=f"{name} says hi",
+                    provider=name,
+                    model=model,
+                    input_tokens=1,
+                    output_tokens=1,
+                    latency_ms=1.0,
+                ),
+            )
+
+        return factory
+
+    monkeypatch.setitem(PROVIDERS, "groq", make_factory("groq"))
+    monkeypatch.setitem(PROVIDERS, "gemini", make_factory("gemini"))
+    monkeypatch.setitem(PROVIDERS, "ollama", make_factory("ollama"))
+
+    result = runner.invoke(
+        app,
+        [
+            "compare",
+            "hello",
+            "--providers",
+            "groq,gemini,ollama",
+            "--groq-model",
+            "llama-3.3-70b-versatile",
+            "--gemini-model",
+            "gemini-2.5-flash",
+            "--ollama-model",
+            "llama3.2",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured_models["groq"] == "llama-3.3-70b-versatile"
+    assert captured_models["gemini"] == "gemini-2.5-flash"
+    assert captured_models["ollama"] == "llama3.2"
+
+
+def test_chat_command_works_with_ollama_provider(monkeypatch):
+    monkeypatch.setitem(
+        PROVIDERS,
+        "ollama",
+        lambda model: FakeProvider(
+            "ollama",
+            model,
+            response=ChatResponse(
+                text="hi from ollama",
+                provider="ollama",
+                model=model,
+                input_tokens=3,
+                output_tokens=3,
+                latency_ms=5.0,
+            ),
+        ),
+    )
+
+    result = runner.invoke(app, ["chat", "hello", "--provider", "ollama"])
+
+    assert result.exit_code == 0
+    assert "hi from ollama" in result.output
