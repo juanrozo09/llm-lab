@@ -1,7 +1,7 @@
 [project]
 name = "llm-lab"
 version = "0.1.0"
-description = "CLI to chat, compare, and benchmark Anthropic and OpenAI models"
+description = "CLI to chat, compare, and benchmark Anthropic, OpenAI, Groq, Gemini, and Ollama models"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -29,6 +29,9 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:'_UnionGenericAlias' is deprecated:DeprecationWarning:google.genai.types",
+]
 
 [build-system]
 requires = ["hatchling"]
