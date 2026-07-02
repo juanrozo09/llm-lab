@@ -1,5 +1,6 @@
 # llm_lab/cli.py
 import asyncio
+from collections.abc import Callable
 
 import typer
 from rich.console import Console
@@ -8,16 +9,16 @@ from rich.panel import Panel
 from rich.table import Table
 
 from llm_lab.errors import ProviderUnavailableError
-from llm_lab.models import ChatResponse, cost
-from llm_lab.providers.anthropic import AnthropicProvider
-from llm_lab.providers.openai import OpenAIProvider
+from llm_lab.models import ChatResponse, cost, resolve_model
+from llm_lab.providers.base import Provider
+from llm_lab.providers.langchain_provider import LangChainProvider
 
 app = typer.Typer(help="Chat with, compare, and benchmark LLM providers.")
 console = Console()
 
-PROVIDERS = {
-    "anthropic": AnthropicProvider,
-    "openai": OpenAIProvider,
+PROVIDERS: dict[str, Callable[[str], Provider]] = {
+    "anthropic": lambda model: LangChainProvider("anthropic", model),
+    "openai": lambda model: LangChainProvider("openai", model),
 }
 
 # Provider construction raises a plain RuntimeError when an API key is
@@ -55,6 +56,9 @@ def chat(
     provider: str = typer.Option(
         "anthropic", help="Provider to use: anthropic or openai"
     ),
+    model: str | None = typer.Option(
+        None, "--model", help="Override the model for the selected provider"
+    ),
     system: str | None = typer.Option(None, help="Optional system prompt"),
     fallback: bool = typer.Option(
         False, "--fallback", help="Retry with the other provider on failure"
@@ -63,16 +67,22 @@ def chat(
     if provider not in PROVIDERS:
         console.print(f"[red]Error:[/red] unknown provider '{provider}'")
         raise typer.Exit(code=1)
+    try:
+        model_name = resolve_model(provider, model)
+    except ValueError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1)
 
     async def run() -> tuple[ChatResponse, bool]:
         try:
-            instance = PROVIDERS[provider]()
+            instance = PROVIDERS[provider](model_name)
             return await instance.chat(prompt, system), False
         except PROVIDER_ERRORS:
             if not fallback:
                 raise
             other_name = "openai" if provider == "anthropic" else "anthropic"
-            other = PROVIDERS[other_name]()
+            other_model = resolve_model(other_name, None)
+            other = PROVIDERS[other_name](other_model)
             return await other.chat(prompt, system), True
 
     try:
@@ -92,11 +102,25 @@ def chat(
 def compare(
     prompt: str = typer.Argument(..., help="Prompt to send to both providers"),
     system: str | None = typer.Option(None, help="Optional system prompt"),
+    anthropic_model: str | None = typer.Option(
+        None, "--anthropic-model", help="Override Anthropic's model"
+    ),
+    openai_model: str | None = typer.Option(
+        None, "--openai-model", help="Override OpenAI's model"
+    ),
 ) -> None:
     names = list(PROVIDERS.keys())
+    overrides = {"anthropic": anthropic_model, "openai": openai_model}
+    models: dict[str, str] = {}
+    for name in names:
+        try:
+            models[name] = resolve_model(name, overrides.get(name))
+        except ValueError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(code=1)
 
     async def call(name: str) -> ChatResponse:
-        return await PROVIDERS[name]().chat(prompt, system)
+        return await PROVIDERS[name](models[name]).chat(prompt, system)
 
     async def run() -> list[ChatResponse | BaseException]:
         return await asyncio.gather(
@@ -135,6 +159,9 @@ def benchmark(
     provider: str = typer.Option(
         "anthropic", help="Provider to use: anthropic or openai"
     ),
+    model: str | None = typer.Option(
+        None, "--model", help="Override the model for the selected provider"
+    ),
     n: int = typer.Option(5, "--n", help="Number of sequential runs"),
 ) -> None:
     if provider not in PROVIDERS:
@@ -143,9 +170,14 @@ def benchmark(
     if n < 1:
         console.print(f"[red]Error:[/red] --n must be at least 1, got {n}")
         raise typer.Exit(code=1)
+    try:
+        model_name = resolve_model(provider, model)
+    except ValueError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1)
 
     async def run() -> list[ChatResponse]:
-        instance = PROVIDERS[provider]()
+        instance = PROVIDERS[provider](model_name)
         responses = []
         for _ in range(n):
             responses.append(await instance.chat(prompt))
