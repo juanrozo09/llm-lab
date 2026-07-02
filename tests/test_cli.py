@@ -596,3 +596,11 @@ def test_chat_command_works_with_ollama_provider(monkeypatch):
 
     assert result.exit_code == 0
     assert "hi from ollama" in result.output
+
+
+def test_providers_registry_ships_all_five_providers():
+    # Unlike the monkeypatched tests above, this checks the real PROVIDERS
+    # dict cli.py ships with, not a substituted entry — proving groq/gemini/
+    # ollama are genuinely registered by default, not just testable via
+    # monkeypatch.setitem.
+    assert {"anthropic", "openai", "groq", "gemini", "ollama"} <= PROVIDERS.keys()
