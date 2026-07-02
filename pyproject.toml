@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.9",
     "anthropic>=0.40",
     "openai>=1.60",
+    "langchain>=0.3",
     "langchain-anthropic>=0.3",
     "langchain-openai>=0.3",
 ]
